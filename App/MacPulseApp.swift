@@ -129,6 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // The helper also restores automatic control when MacPulse disconnects.
+        MainActor.assumeIsolated { FanController.shared.setAutomatic() }
+    }
+
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
     }
@@ -173,6 +178,7 @@ struct DashboardView: View {
                 } else {
                     memoryModule
                 }
+                if s.fanRPM != nil { FanControlModule(snapshot: s) }
                 menuBarModule
                 buttonRow
                 if !compact { controlCenterHint }
@@ -417,6 +423,137 @@ struct RoundButton<Icon: View>: View {
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Fan control
+
+struct FanControlModule: View {
+    let snapshot: Snapshot
+    @ObservedObject private var fan = FanController.shared
+    @State private var target: Double = 0
+    /// Optimistic mode until the next sample confirms it.
+    @State private var pendingManual: Bool?
+
+    private var manual: Bool { pendingManual ?? (snapshot.fanManual == true) }
+    private var maxRPM: Double { snapshot.fanMax ?? 6000 }
+    private var lower: Double {
+        let base = fan.floor > 0 ? fan.floor : (snapshot.fanRPM ?? 0)
+        return min((base / 100).rounded(.up) * 100, maxRPM - 100)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("風扇控制").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                Spacer()
+                ModeSwitch(manual: manual, onChange: switchMode)
+            }
+            content
+            if let error = fan.errorMessage {
+                Text(error).font(.system(size: 10)).foregroundStyle(.red)
+            }
+        }
+        .module()
+        .onChange(of: snapshot.fanManual) { _, value in
+            if value == pendingManual { pendingManual = nil }
+        }
+        .onChange(of: fan.floor) { _, floor in
+            if floor > 0, target < floor { target = (floor / 100).rounded(.up) * 100 }
+        }
+        .task {
+            // Picks up approval in System Settings while the panel is open.
+            while !Task.isCancelled {
+                fan.refreshState()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch fan.helperState {
+        case .ready:
+            if manual {
+                HStack(spacing: 10) {
+                    Slider(value: $target, in: lower...maxRPM, step: 100) { editing in
+                        if !editing { fan.setManual(rpm: target) }
+                    }
+                    .tint(.teal)
+                    Text("\(Int(target))")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .trailing)
+                }
+                Text("最低 \(Int(lower)) RPM（接手時的轉速）· CPU 達 90°C 會自動交還系統")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text("目前由系統自動控制。切到「手動」就能拉動轉速。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        case .notInstalled:
+            HStack {
+                Text("手動控制需要安裝一個管理員權限的小幫手。")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("安裝") { fan.install() }
+            }
+        case .needsApproval:
+            HStack {
+                Text("請到「系統設定 › 一般 › 登入項目與延伸功能」允許 MacPulse。")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("打開") { fan.openLoginItems() }
+            }
+        case .unavailable(let message):
+            Text(message).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    private func switchMode(_ wantManual: Bool) {
+        switch fan.helperState {
+        case .ready:
+            pendingManual = wantManual
+            if wantManual {
+                target = max(target, lower)
+                fan.setManual(rpm: target)
+            } else {
+                fan.setAutomatic()
+            }
+        case .notInstalled: fan.install()
+        case .needsApproval: fan.openLoginItems()
+        case .unavailable: break
+        }
+    }
+}
+
+struct ModeSwitch: View {
+    let manual: Bool
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            segment("自動", selected: !manual) { onChange(false) }
+            segment("手動", selected: manual) { onChange(true) }
+        }
+        .padding(2)
+        .background(Capsule().fill(.primary.opacity(0.08)))
+    }
+
+    private func segment(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(selected ? AnyShapeStyle(Color.teal.gradient) : AnyShapeStyle(.clear)))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }

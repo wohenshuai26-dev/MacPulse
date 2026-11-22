@@ -141,3 +141,66 @@ int MPReadFans(double *actualRPM, double *maxRPM, int max) {
     }
     return count;
 }
+
+// MARK: - SMC writes (fan control, root only)
+
+enum { kSMCWriteKey = 6 };
+
+static int smcWrite(const char *key, const void *data, UInt32 size) {
+    if (!smcConnection()) return -1;
+    SMCKeyData in, out;
+    memset(&in, 0, sizeof in); memset(&out, 0, sizeof out);
+    in.key = fourCC(key);
+    in.data8 = kSMCGetKeyInfo;
+    if (smcCall(&in, &out) != KERN_SUCCESS || out.result != 0) return -1;
+    if (out.keyInfo.dataSize != size) return -1;
+
+    memset(&in, 0, sizeof in); memset(&out, 0, sizeof out);
+    in.key = fourCC(key);
+    in.keyInfo.dataSize = size;
+    in.data8 = kSMCWriteKey;
+    memcpy(in.bytes, data, size);
+    if (smcCall(&in, &out) != KERN_SUCCESS || out.result != 0) return -1;
+    return 0;
+}
+
+static int fanCount(void) {
+    double n = 0;
+    return smcReadNumber("FNum", &n) == 0 ? (int)n : 0;
+}
+
+int MPReadFanMode(void) {
+    double m = -1;
+    return smcReadNumber("F0md", &m) == 0 ? (int)m : -1;
+}
+
+int MPSetFanManual(double rpm) {
+    int n = fanCount();
+    if (n == 0) return -1;
+    for (int i = 0; i < n; i++) {
+        char key[5];
+        double lo = 0, hi = 0;
+        snprintf(key, sizeof key, "F%dMn", i); smcReadNumber(key, &lo);
+        snprintf(key, sizeof key, "F%dMx", i); smcReadNumber(key, &hi);
+        float target = (float)rpm;
+        if (lo > 0 && target < lo) target = (float)lo;
+        if (hi > 0 && target > hi) target = (float)hi;
+        unsigned char manual = 1;
+        snprintf(key, sizeof key, "F%dmd", i);
+        if (smcWrite(key, &manual, 1) != 0) return -1;
+        snprintf(key, sizeof key, "F%dTg", i);
+        if (smcWrite(key, &target, 4) != 0) return -1;
+    }
+    return 0;
+}
+
+int MPSetFanAuto(void) {
+    int n = fanCount(), rc = 0;
+    for (int i = 0; i < n; i++) {
+        char key[5];
+        unsigned char automatic = 0;
+        snprintf(key, sizeof key, "F%dmd", i);
+        if (smcWrite(key, &automatic, 1) != 0) rc = -1;
+    }
+    return rc;
+}

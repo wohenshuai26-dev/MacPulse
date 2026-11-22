@@ -25,9 +25,11 @@ targets:
     sources:
       - path: App
       - path: Shared
+      - path: Common
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(MP_BUNDLE_PREFIX).MacPulse
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/MacPulse.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: App/MacPulse-Bridging-Header.h
@@ -35,6 +37,30 @@ targets:
     dependencies:
       - target: MacPulseControls
         embed: true
+      - target: MacPulseFanHelper
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+    postBuildScripts:
+      - name: Fan helper launchd plist
+        basedOnDependencyAnalysis: false
+        script: |
+          LABEL="${MP_BUNDLE_PREFIX}.MacPulse.FanHelper"
+          DIR="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons"
+          mkdir -p "$DIR"
+          cat > "$DIR/$LABEL.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>Label</key><string>$LABEL</string>
+            <key>BundleProgram</key><string>Contents/MacOS/MacPulseFanHelper</string>
+            <key>MachServices</key><dict><key>$LABEL</key><true/></dict>
+            <key>AssociatedBundleIdentifiers</key><array><string>${MP_BUNDLE_PREFIX}.MacPulse</string></array>
+          </dict>
+          </plist>
+          PLIST
   MacPulseControls:
     type: app-extension
     platform: macOS
@@ -49,3 +75,18 @@ targets:
     dependencies:
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
+  MacPulseFanHelper:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Helper
+      - path: Common
+      - path: App/MPSensors.c
+    settings:
+      base:
+        PRODUCT_NAME: MacPulseFanHelper
+        PRODUCT_BUNDLE_IDENTIFIER: $(MP_BUNDLE_PREFIX).MacPulse.FanHelper
+        INFOPLIST_FILE: Helper/Info.plist
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        SWIFT_OBJC_BRIDGING_HEADER: App/MacPulse-Bridging-Header.h
+        SKIP_INSTALL: YES

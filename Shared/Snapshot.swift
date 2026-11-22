@@ -14,6 +14,8 @@ struct Snapshot: Codable, Sendable, Equatable {
     /// Fastest fan's speed and its maximum (RPM); nil on fanless Macs.
     var fanRPM: Double? = nil
     var fanMax: Double? = nil
+    /// true while MacPulse's fan helper holds the fan in manual mode.
+    var fanManual: Bool? = nil
 
     var memFraction: Double { memTotal == 0 ? 0 : Double(memUsed) / Double(memTotal) }
 

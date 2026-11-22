@@ -47,8 +47,8 @@ final class Sampler: ObservableObject {
     }
 
     func sample() {
-        let temps = readTemperatures()
-        let fan = readFans()
+        let temps = cpuDieTemperatures()
+        let fan = fastestFan()
         let s = Snapshot(date: .now,
                          cpuTemp: temps.avg,
                          cpuTempMax: temps.max,
@@ -56,7 +56,8 @@ final class Sampler: ObservableObject {
                          memUsed: readMemory().used,
                          memTotal: ProcessInfo.processInfo.physicalMemory,
                          fanRPM: fan?.rpm,
-                         fanMax: fan?.max)
+                         fanMax: fan?.max,
+                         fanManual: fan == nil ? nil : MPReadFanMode() == 1)
         snapshot = s
         SnapshotStore.write(s)
         pushToControlCenterIfNeeded(s)
@@ -76,31 +77,6 @@ final class Sampler: ObservableObject {
     }
 
     // MARK: - Sensors
-
-    /// Apple Silicon CPU die temperature from the HID "PMU tdie*" sensors.
-    private func readTemperatures() -> (avg: Double?, max: Double?) {
-        guard let raw = MPCopyTemperatureSensors() as? [String: Double] else { return (nil, nil) }
-        let valid: (Double) -> Bool = { $0 > 0 && $0 < 130 }
-        // M2 and later: "PMU tdie1…n"; M1: "pACC/eACC MTR Temp Sensor…"
-        var values = raw.filter { $0.key.hasPrefix("PMU tdie") }.map(\.value).filter(valid)
-        if values.isEmpty {
-            values = raw.filter { $0.key.contains("MTR Temp Sensor") }.map(\.value).filter(valid)
-        }
-        if values.isEmpty {
-            values = raw.filter { $0.key.contains("tdie") }.map(\.value).filter(valid)
-        }
-        guard !values.isEmpty else { return (nil, nil) }
-        return (values.reduce(0, +) / Double(values.count), values.max())
-    }
-
-    /// Fastest fan (RPM) and its maximum, read from the SMC; nil on fanless Macs.
-    private func readFans() -> (rpm: Double, max: Double)? {
-        var actual = [Double](repeating: 0, count: 4)
-        var maximum = [Double](repeating: 0, count: 4)
-        let n = Int(MPReadFans(&actual, &maximum, 4))
-        guard n > 0, let i = actual.prefix(n).indices.max(by: { actual[$0] < actual[$1] }) else { return nil }
-        return (actual[i], maximum[i])
-    }
 
     /// Whole-system CPU usage (0...1) from tick deltas since the previous call.
     private func readCPUUsage() -> Double {
