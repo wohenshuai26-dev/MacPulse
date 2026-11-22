@@ -117,7 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             w.title = "MacPulse"
             w.titleVisibility = .hidden
             w.titlebarAppearsTransparent = true
-            w.isMovableByWindowBackground = true
+            // Not movable by background: SwiftUI sliders would drag the whole window.
+            // The (transparent) title bar strip at the top still moves it.
+            w.isMovableByWindowBackground = false
             w.isReleasedWhenClosed = false
             w.delegate = self
             w.center()
@@ -481,12 +483,12 @@ struct FanControlModule: View {
                         if !editing { fan.setManual(rpm: target) }
                     }
                     .tint(.teal)
-                    Text("\(Int(target))")
+                    Text(verbatim: String(Int(target)))
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .frame(width: 40, alignment: .trailing)
                 }
-                Text("最低 \(Int(lower)) RPM（接手時的轉速）· CPU 達 90°C 會自動交還系統")
+                Text(verbatim: "最低 \(Int(lower)) RPM（接手時的轉速）· CPU 達 90°C 會自動交還系統")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             } else {
