@@ -1,0 +1,12 @@
+// Shared build settings.
+// Put your own Apple Developer team and bundle prefix in Config/Local.xcconfig
+// (git-ignored, see Config/Local.xcconfig.example).
+
+DEVELOPMENT_TEAM =
+MP_BUNDLE_PREFIX = com.example
+
+#include? "Local.xcconfig"
+
+// App Group shared by the app and the Control Center extension.
+// On macOS a team-prefixed group works without a provisioning profile.
+MP_APP_GROUP = $(DEVELOPMENT_TEAM).$(MP_BUNDLE_PREFIX).MacPulse

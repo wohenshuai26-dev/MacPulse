@@ -1,0 +1,4 @@
+// Copy to Config/Local.xcconfig and fill in your own values.
+// Team ID: https://developer.apple.com/account → Membership details
+DEVELOPMENT_TEAM = ABCDE12345
+MP_BUNDLE_PREFIX = com.yourname

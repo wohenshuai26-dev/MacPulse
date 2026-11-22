@@ -1,0 +1,51 @@
+name: MacPulse
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  # Generates the number symbols (62°, 38%, …) used by the Control Center controls.
+  preGenCommand: swift tools/make_symbols.swift Controls/Assets.xcassets
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Apple Development"
+    PROVISIONING_PROFILE_SPECIFIER: ""
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2"
+    ENABLE_HARDENED_RUNTIME: YES
+    GENERATE_INFOPLIST_FILE: NO
+targets:
+  MacPulse:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(MP_BUNDLE_PREFIX).MacPulse
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/MacPulse.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: App/MacPulse-Bridging-Header.h
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: MacPulseControls
+        embed: true
+  MacPulseControls:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Controls
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(MP_BUNDLE_PREFIX).MacPulse.Controls
+        INFOPLIST_FILE: Controls/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Controls/MacPulseControls.entitlements
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
